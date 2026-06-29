@@ -1,0 +1,16 @@
+{
+  "name": "encarta_95_web",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"local-ssl-proxy --source 3001 --target 3000\" \"serve ./copysh -l 3000\""
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "local-ssl-proxy": "^2.0.5",
+    "serve": "^14.2.6"
+  }
+}
