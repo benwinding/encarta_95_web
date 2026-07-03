@@ -4,13 +4,19 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"local-ssl-proxy --source 3001 --target 3000\" \"serve ./copysh -l 3000\""
+    "start": "concurrently \"local-ssl-proxy --source 3001 --target 3000\" \"serve ./copysh -l 3000\"",
+    "test:copysh": "node scripts/test-copysh-playwright.mjs",
+    "test:copysh:download": "PW_TEST_DOWNLOAD=1 node scripts/test-copysh-playwright.mjs",
+    "validate_encarta_loads": "node scripts/validate_encarta_loads.mjs"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "concurrently": "^10.0.3",
     "local-ssl-proxy": "^2.0.5",
-    "serve": "^14.2.6"
+    "playwright": "^1.61.1",
+    "png-visual-compare": "^6.2.0",
+    "serve": "^14.2.6",
+    "yargs": "^18.0.0"
   }
 }
