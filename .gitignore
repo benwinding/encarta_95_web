@@ -1,3 +1,6 @@
 .playwright-mcp
+.ralph
 node_modules
 playwright-output
+copysh/**/*.img
+copysh/build

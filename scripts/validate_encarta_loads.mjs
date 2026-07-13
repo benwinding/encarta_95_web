@@ -45,7 +45,7 @@ async function main() {
     )
     .option("timeout-ms", {
       type: "number",
-      default: 60_000,
+      default: 30_000,
       describe: "Validation timeout in milliseconds",
     })
     .option("min-similarity", {

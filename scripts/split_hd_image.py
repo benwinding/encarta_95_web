@@ -22,7 +22,8 @@ def split_file(input_path: Path, out_root: Path, chunk_size: int) -> None:
     if not input_path.exists() or not input_path.is_file():
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    suffix = input_path.suffix or ".img"
+    # Always use .img for v86 part loading to match expected URL pattern
+    suffix = ".img"
     out_dir = out_root / input_path.stem
     out_dir.mkdir(parents=True, exist_ok=True)
 

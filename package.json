@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "sync:v86": "node scripts/sync_v86_assets.mjs",
+    "prestart": "npm run sync:v86",
     "start": "concurrently \"local-ssl-proxy --source 3001 --target 3000\" \"serve ./copysh -l 3000\"",
     "test:copysh": "node scripts/test-copysh-playwright.mjs",
     "test:copysh:download": "PW_TEST_DOWNLOAD=1 node scripts/test-copysh-playwright.mjs",
@@ -18,5 +20,8 @@
     "png-visual-compare": "^6.2.0",
     "serve": "^14.2.6",
     "yargs": "^18.0.0"
+  },
+  "dependencies": {
+    "v86": "^0.5.424"
   }
 }
