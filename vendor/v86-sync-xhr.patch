@@ -1,0 +1,90 @@
+diff --git a/src/buffer.js b/src/buffer.js
+index 60a4a2ed..864102e2 100644
+--- a/src/buffer.js
++++ b/src/buffer.js
+@@ -203,7 +203,7 @@ AsyncXHRBuffer.prototype.get = function(offset, len, fn, options)
+             }
+         }.bind(this),
+         range: { start: requested_start, length: requested_length },
+-        signal: options?.signal,
++        signal: options?.signal, synchronous: this.synchronous,
+     });
+ };
+ 
+@@ -485,7 +485,7 @@ AsyncXHRPartfileBuffer.prototype.get = function(offset, len, fn, options)
+                             fn(blocks.subarray(m_offset, m_offset + len));
+                         }
+                     }.bind(this),
+-                    signal: options?.signal,
++                    signal: options?.signal, synchronous: this.synchronous,
+                 });
+             }
+         }
+@@ -502,7 +502,7 @@ AsyncXHRPartfileBuffer.prototype.get = function(offset, len, fn, options)
+                 this.handle_read(offset, len, block);
+                 fn(block);
+             }.bind(this),
+-            signal: options?.signal,
++            signal: options?.signal, synchronous: this.synchronous,
+         });
+     }
+ };
+@@ -724,14 +724,17 @@ export function buffer_from_object(obj, zstd_decompress_worker)
+     {
+         // Note: Only async for now
+ 
++        var sync_buffer;
+         if(obj.use_parts)
+         {
+-            return new AsyncXHRPartfileBuffer(obj.url, obj.size, obj.fixed_chunk_size, false, zstd_decompress_worker);
++            sync_buffer = new AsyncXHRPartfileBuffer(obj.url, obj.size, obj.fixed_chunk_size, false, zstd_decompress_worker);
+         }
+         else
+         {
+-            return new AsyncXHRBuffer(obj.url, obj.size, obj.fixed_chunk_size);
++            sync_buffer = new AsyncXHRBuffer(obj.url, obj.size, obj.fixed_chunk_size);
+         }
++        sync_buffer.synchronous = !!obj.synchronous;
++        return sync_buffer;
+     }
+     else
+     {
+diff --git a/src/lib.js b/src/lib.js
+index aad6a8cd..48eeb1d5 100644
+--- a/src/lib.js
++++ b/src/lib.js
+@@ -607,6 +607,34 @@ else
+      */
+     load_file = async function(filename, options, n_tries)
+     {
++        if(options.synchronous)
++        {
++            var http = new XMLHttpRequest();
++            http.open(options.method || "get", filename, false);
++            if(!options.as_json) { http.overrideMimeType("text/plain; charset=x-user-defined"); }
++            if(options.headers) { for(var k in options.headers) http.setRequestHeader(k, options.headers[k]); }
++            if(options.range)
++            {
++                var s = options.range.start, e = s + options.range.length - 1;
++                http.setRequestHeader("Range", "bytes=" + s + "-" + e);
++                http.setRequestHeader("X-Accept-Encoding", "identity");
++            }
++            http.send();
++            if(http.status === 200 || http.status === 206)
++            {
++                if(options.as_json) { options.done(JSON.parse(http.responseText)); }
++                else
++                {
++                    var text = http.responseText;
++                    var out = new Uint8Array(text.length);
++                    for(var i = 0; i < text.length; i++) out[i] = text.charCodeAt(i) & 0xFF;
++                    options.done(out.buffer);
++                }
++            }
++            else { console.error("Loading the image " + filename + " failed (status %d)", http.status); }
++            return;
++        }
++
+         var http = new XMLHttpRequest();
+ 
+         const abort = () => http.abort();

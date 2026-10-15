@@ -26,6 +26,13 @@ async function main() {
     await cp(from, to);
     console.log(`synced ${fileName}`);
   }
+
+  // Overlay a patched v86 build. It adds `synchronous: true` disk I/O
+  // (paged chunks fetched via synchronous XHR) which fixes Win95's
+  // ESDI_506 crash on async CD reads. See vendor/v86-sync-xhr.patch.
+  const patched = path.join(rootDir, "vendor", "libv86.sync.js");
+  await cp(patched, path.join(targetBuildDir, "libv86.js"));
+  console.log("overlaid patched libv86.js (synchronous paged disk I/O)");
 }
 
 main().catch((error) => {
