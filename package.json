@@ -6,10 +6,7 @@
   "scripts": {
     "sync:v86": "node scripts/sync_v86_assets.mjs",
     "prestart": "npm run sync:v86",
-    "start": "concurrently \"local-ssl-proxy --source 3001 --target 3000\" \"serve ./copysh -l 3000\"",
-    "test:copysh": "node scripts/test-copysh-playwright.mjs",
-    "test:copysh:download": "PW_TEST_DOWNLOAD=1 node scripts/test-copysh-playwright.mjs",
-    "validate_encarta_loads": "node scripts/validate_encarta_loads.mjs"
+    "start": "concurrently \"local-ssl-proxy --source 3001 --target 3000\" \"serve ./copysh -l 3000\""
   },
   "author": "",
   "license": "ISC",
