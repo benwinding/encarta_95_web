@@ -11,17 +11,14 @@
     #screen_container { width: min(100%, calc((100vh - 16px) * 4 / 3)); height: min(100%, calc((100vw - 16px) * 3 / 4)); aspect-ratio: 4 / 3; outline: none; background: #000; }
     #screen_container.captured { cursor: none; }
     #screen_container canvas, #screen_container > div { width: 100% !important; height: 100% !important; display: block; }
-    #status { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); color: #9fd0ff; font: 12px/1.4 monospace; opacity: .85; }
   </style>
 </head>
 <body>
-  <div id="status">restoring live snapshot… (disk chunks load on demand)</div>
   <div id="viewport"><div id="screen_container" tabindex="0" title="Click to capture mouse"></div></div>
 
   <script src="runtime/libv86.js"></script>
   <script>
     const screen = document.getElementById("screen_container");
-    const status = document.getElementById("status");
 
     const emulator = new V86({
       wasm_path: "runtime/v86.wasm",
@@ -37,9 +34,6 @@
       disable_audio: true,
     });
     window.emulator = emulator;
-
-    emulator.add_listener("emulator-ready", () => { status.textContent = "restoring snapshot…"; });
-    setTimeout(() => { status.style.display = "none"; }, 15000);
 
     async function focusAndCapture() {
       screen.focus();
