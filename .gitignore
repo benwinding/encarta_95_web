@@ -1,6 +1,12 @@
-.playwright-mcp
-.ralph
+# dependencies
 node_modules
-playwright-output
-copysh/**/*.img
-copysh/build
+
+# user-supplied media (see README)
+input/
+
+# generated at build time
+public/runtime/
+public/disks/encarta95/
+
+# OS
+.DS_Store

@@ -1,22 +1,15 @@
 {
   "name": "encarta_95_web",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Run Encarta 95 in the browser (v86) as a static site",
   "scripts": {
-    "sync:v86": "node scripts/sync_v86_assets.mjs",
-    "prestart": "npm run sync:v86",
-    "start": "concurrently \"local-ssl-proxy --source 3001 --target 3000\" \"serve ./copysh -l 3000\""
+    "build": "node scripts/build.mjs",
+    "run": "serve public -l 8080"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^10.0.3",
-    "local-ssl-proxy": "^2.0.5",
-    "playwright": "^1.61.1",
-    "png-visual-compare": "^6.2.0",
-    "serve": "^14.2.6",
-    "yargs": "^18.0.0"
+    "serve": "^14.2.6"
   },
   "dependencies": {
     "v86": "^0.5.424"
