@@ -8,5 +8,8 @@ input/
 public/runtime/
 public/disks/encarta95/
 
+# browser automation artifacts
+.playwright-mcp/
+
 # OS
 .DS_Store

@@ -8,8 +8,10 @@
     html, body { margin: 0; height: 100%; background: #000; }
     body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
     #viewport { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; padding: 8px; box-sizing: border-box; }
-    #screen_container { width: min(100%, calc((100vh - 16px) * 4 / 3)); height: min(100%, calc((100vw - 16px) * 3 / 4)); aspect-ratio: 4 / 3; outline: none; background: #000; }
+    #screen_container { position: relative; width: min(100%, calc((100vh - 16px) * 4 / 3)); height: min(100%, calc((100vw - 16px) * 3 / 4)); aspect-ratio: 4 / 3; outline: none; background: #000; }
     #screen_container.captured { cursor: none; }
+    /* Cover the Windows 95 taskbar strip at the bottom (1024x768 guest: 28px ≈ 3.65%) */
+    #taskbar-mask { position: absolute; left: 0; right: 0; bottom: 0; height: 3.65%; background: #000; z-index: 10; display: block; pointer-events: none; }
     #screen_container canvas, #screen_container > div { width: 100% !important; height: 100% !important; display: block; }
   </style>
 </head>
@@ -34,6 +36,12 @@
       disable_audio: true,
     });
     window.emulator = emulator;
+
+    // Cover the Windows 95 taskbar strip. NOTE: must not be a <div> — V86 claims
+    // the container's first <canvas> and first <div> as its screen layers.
+    const taskbarMask = document.createElement("span");
+    taskbarMask.id = "taskbar-mask";
+    screen.appendChild(taskbarMask);
 
     async function focusAndCapture() {
       screen.focus();
