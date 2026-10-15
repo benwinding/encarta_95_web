@@ -23,8 +23,11 @@ npm run build
 npm run run      # http://localhost:8080
 ```
 
-Then open <http://localhost:8080>, click the screen to capture the mouse, and use Encarta
-(search, links, **Features → Mind Maze**, …).
+Then open <http://localhost:8080> and use Encarta (search, links, **Features → Mind Maze**, …).
+
+The page is a kiosk: the Windows 95 title-bar buttons (minimize/maximize/close) and the
+taskbar are covered by click-blocking shields, and desktop escape keys (Alt+F4/Alt+Tab/
+Ctrl+Esc) are suppressed, so the desktop can't be reached.
 
 ## Commands
 
