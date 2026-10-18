@@ -2,19 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Encarta 95 (interactive)</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #000; }
+    html, body { margin: 0; height: 100%; background: #000; overscroll-behavior: none; }
     body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    #viewport { position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; padding: 8px; box-sizing: border-box; }
-    #screen_container { width: min(100%, calc((100vh - 16px) * 4 / 3)); height: min(100%, calc((100vw - 16px) * 3 / 4)); aspect-ratio: 4 / 3; outline: none; background: #000; }
+    #viewport { position: relative; width: 100vw; height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 8px; box-sizing: border-box; }
+    #screen_container { width: min(100%, calc((100dvh - 16px) * 4 / 3)); height: min(100%, calc((100vw - 16px) * 3 / 4)); aspect-ratio: 4 / 3; outline: none; background: #000; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
     #screen_container canvas, #screen_container > div { width: 100% !important; height: 100% !important; display: block; }
     #screen_container.captured { cursor: none; }
 
-    /* Visually hide the Windows 95 taskbar strip. This is cosmetic only
-     * (pointer-events: none) — mouse input is handled by v86 under pointer lock. */
+    /* Visually hide the Windows 95 taskbar strip. Cosmetic only (pointer-events: none). */
     #taskbar-mask { position: absolute; z-index: 10; display: none; background: #000; pointer-events: none; }
+
+    /* Floating on-screen-keyboard trigger, shown only on touch devices. */
+    #kbd-btn { position: fixed; right: 12px; bottom: 12px; z-index: 20; display: none; width: 48px; height: 48px; padding: 0; border: 1px solid #444; border-radius: 8px; background: rgba(30,30,30,0.85); color: #eee; font-size: 22px; line-height: 46px; text-align: center; cursor: pointer; touch-action: manipulation; }
+    body.touch #kbd-btn { display: block; }
+    #kbd-input { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; z-index: -1; }
   </style>
 </head>
 <body>
@@ -22,12 +26,24 @@
     <div id="screen_container" tabindex="0" title="Click to capture the mouse"></div>
     <div id="taskbar-mask"></div>
   </div>
+  <button id="kbd-btn" aria-label="Keyboard">&#9000;</button>
+  <input id="kbd-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
 
   <script src="runtime/libv86.js"></script>
   <script>
+    const GUEST_W = 1024;
+    const GUEST_H = 768;
+
     const viewport = document.getElementById("viewport");
     const screen = document.getElementById("screen_container");
     const taskbarMask = document.getElementById("taskbar-mask");
+    const kbdBtn = document.getElementById("kbd-btn");
+    const kbdInput = document.getElementById("kbd-input");
+
+    const isTouch =
+      (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+      "ontouchstart" in window;
+    if (isTouch) document.body.classList.add("touch");
 
     const emulator = new V86({
       wasm_path: "runtime/v86.wasm",
@@ -64,8 +80,8 @@
       new ResizeObserver(layoutTaskbarMask).observe(screen);
     }
 
-    // Capture the mouse: v86 forwards relative movement only while the host
-    // pointer is locked, so this is what makes the guest cursor track 1:1.
+    /* ---------------- Mouse (desktop): Pointer Lock ---------------- */
+
     let lockPending = false;
     async function captureMouse() {
       screen.focus();
@@ -74,19 +90,155 @@
       try { await emulator.lock_mouse(); } catch (_) {}
       finally { lockPending = false; }
     }
-    // Bind mousedown only: firing on both mousedown and click races two
-    // requestPointerLock() calls ("Pointer lock pending" error).
-    screen.addEventListener("mousedown", captureMouse);
+    if (!isTouch) {
+      // Bind mousedown only: firing on both mousedown and click races two
+      // requestPointerLock() calls ("Pointer lock pending" error).
+      screen.addEventListener("mousedown", captureMouse);
+    }
     document.addEventListener("pointerlockchange", () => {
       screen.classList.toggle("captured", document.pointerLockElement === document.body);
     });
 
-    // Block escape hatches that would reveal the desktop. Plain Escape stays
-    // unblocked so the user can leave pointer lock.
+    /* ---------------- Touch: warp-to-tap ---------------- */
+
+    // Win95's default pointer speed maps 1 PS/2 mickey -> 2 screen pixels,
+    // so mickeys = pixels / MOUSE_SCALE. (Calibrated empirically: a delta of n
+    // moves 2n-1 px, linear across the whole range.)
+    const MOUSE_SCALE = 2;
+
+    // v86's PS/2 controller consumes only ONE mouse packet per browser
+    // event-loop turn; a burst pushes one packet and drops the rest. So we
+    // send one packet at a time, spaced by a real timer tick so the guest's
+    // mouse driver has time to read it. (25 ms proved reliable under load.)
+    const turn = () => new Promise((resolve) => setTimeout(resolve, 25));
+
+    // Warp the guest cursor to an absolute guest pixel. Relative-only:
+    //   1. Saturate into the top-left corner (Win95 clamps at the border),
+    //      giving a known origin.
+    //   2. Walk to the target in paced <=127-mickey packets.
+    async function warpTo(gx, gy) {
+      const b = emulator.bus;
+      if (!b) return;
+      for (let i = 0; i < 6; i++) {
+        b.send("mouse-delta", [-127, 127]); // left + up (v86 delta is up-positive)
+        await turn();
+      }
+      let mx = Math.round(gx / MOUSE_SCALE);
+      let my = Math.round(gy / MOUSE_SCALE);
+      while (mx > 0 || my > 0) {
+        const dx = Math.min(127, mx);
+        const dy = Math.min(127, my);
+        mx -= dx;
+        my -= dy;
+        b.send("mouse-delta", [dx, -dy]); // right + down
+        await turn();
+      }
+    }
+
+    let clicking = false;
+    async function clickAt(gx, gy) {
+      if (clicking) return;
+      clicking = true;
+      try {
+        await warpTo(gx, gy);
+        const b = emulator.bus;
+        if (!b) return;
+        b.send("mouse-click", [true, false, false]);
+        await turn();
+        b.send("mouse-click", [false, false, false]);
+        await turn();
+      } finally {
+        clicking = false;
+      }
+    }
+
+    function clientToGuest(clientX, clientY) {
+      const r = screen.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(GUEST_W - 1, Math.round(((clientX - r.left) / r.width) * GUEST_W))),
+        y: Math.max(0, Math.min(GUEST_H - 1, Math.round(((clientY - r.top) / r.height) * GUEST_H))),
+      };
+    }
+
+    let touchStart = null;
+    screen.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length !== 1) { touchStart = null; return; }
+        const t = e.touches[0];
+        touchStart = { x: t.clientX, y: t.clientY, t: performance.now(), moved: 0 };
+        // Suppress scroll/zoom and the browser's synthetic mouse events
+        // (which would otherwise trigger Pointer Lock).
+        e.preventDefault();
+      },
+      { passive: false }
+    );
+
+    screen.addEventListener(
+      "touchmove",
+      (e) => {
+        if (touchStart && e.changedTouches.length) {
+          const t = e.changedTouches[0];
+          touchStart.moved = Math.max(
+            touchStart.moved,
+            Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y)
+          );
+        }
+        // Dragging moves the cursor: v86's own touchmove handler sends deltas.
+      },
+      { passive: true }
+    );
+
+    screen.addEventListener(
+      "touchend",
+      (e) => {
+        const start = touchStart;
+        touchStart = null;
+        if (!start || !e.changedTouches.length) return;
+        const t = e.changedTouches[0];
+        const dt = performance.now() - start.t;
+        const dist = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+        e.preventDefault();
+        if (dt < 350 && dist < 12 && start.moved < 12) {
+          const g = clientToGuest(t.clientX, t.clientY);
+          clickAt(g.x, g.y);
+        }
+      },
+      { passive: false }
+    );
+
+    screen.addEventListener("touchcancel", () => { touchStart = null; }, { passive: true });
+
+    /* ---------------- On-screen keyboard bridge ---------------- */
+
+    kbdBtn.addEventListener("click", () => {
+      // Focus inside the gesture so iOS raises the soft keyboard.
+      kbdInput.focus();
+    });
+
+    kbdInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { emulator.keyboard_send_keys([13]); e.preventDefault(); }
+      else if (e.key === "Backspace") { emulator.keyboard_send_keys([8]); e.preventDefault(); }
+      else if (e.key === "Tab") { emulator.keyboard_send_keys([9]); e.preventDefault(); }
+      else if (e.key === "ArrowLeft") { emulator.keyboard_send_keys([37]); e.preventDefault(); }
+      else if (e.key === "ArrowUp") { emulator.keyboard_send_keys([38]); e.preventDefault(); }
+      else if (e.key === "ArrowRight") { emulator.keyboard_send_keys([39]); e.preventDefault(); }
+      else if (e.key === "ArrowDown") { emulator.keyboard_send_keys([40]); e.preventDefault(); }
+    });
+
+    kbdInput.addEventListener("input", () => {
+      const v = kbdInput.value;
+      kbdInput.value = "";
+      if (v) emulator.keyboard_send_text(v);
+    });
+
+    /* ---------------- Kiosk: block desktop escape keys ---------------- */
+
     const BLOCKED_KEYS = new Set(["F4", "Tab", "Escape"]);
     window.addEventListener(
       "keydown",
       (e) => {
+        if (e.target === kbdInput) return;
         if ((e.altKey || e.ctrlKey || e.metaKey) && BLOCKED_KEYS.has(e.key)) {
           e.preventDefault();
           e.stopImmediatePropagation();

@@ -26,12 +26,20 @@ npm run run      # http://localhost:8080
 Then open <http://localhost:8080>, click the screen to capture the mouse, and use Encarta
 (search, links, **Features → Mind Maze**, …).
 
-The page captures the mouse via Pointer Lock: the host cursor is hidden and the guest
-cursor follows input 1:1 (v86 only forwards relative mouse movement while the pointer is
-locked). The Windows 95 taskbar is visually masked, and desktop escape keys
-(Alt+F4/Alt+Tab/Ctrl+Esc) are suppressed. Because Pointer Lock bypasses DOM hit-testing,
-click-blocking of the title-bar buttons is not active in this mode — that returns with the
-planned in-guest absolute-mouse (VBMOUSE) work.
+**Desktop:** the page captures the mouse via Pointer Lock — the host cursor is hidden and
+the guest cursor follows input 1:1.
+
+**Touch:** tap a point to warp the guest cursor there and click; drag to move the cursor. A
+floating keyboard button opens the on-screen keyboard (with a bridge for
+Enter/Backspace/Tab/arrows). The Windows 95 taskbar is visually masked, and desktop escape
+keys (Alt+F4/Alt+Tab/Ctrl+Esc) are suppressed.
+
+Touch uses the relative PS/2 mouse: there is no absolute-mouse driver for Windows 95
+(VBADOS/VBMOUSE target Windows 3.x, and its `VBMOUSE.DRV` crashes the Win95 boot). A tap
+saturates the cursor into the top-left corner (Win95 clamps at the border), then walks to
+the target in paced ≤127-mickey packets. v86's PS/2 controller consumes only one mouse
+packet per browser event-loop turn (bursts are dropped), so packets are spaced ~25 ms
+apart; the delta→pixel mapping is a linear 2 px/mickey (Win95's default pointer speed).
 
 ## Commands
 
