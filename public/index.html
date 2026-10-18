@@ -19,7 +19,7 @@
      * which are the only ways to reach the desktop.
      */
     .shield { position: absolute; z-index: 10; display: none; cursor: default; }
-    #shield-titlebar { background: transparent; }
+    #shield-titlebar { background: #000; }
     #shield-taskbar { background: #000; }
   </style>
 </head>
@@ -66,7 +66,7 @@
       const bottomH = Math.round(c.height * BOTTOM_FRACTION);
 
       Object.assign(shieldTitlebar.style, {
-        left: `${left}px`,
+        left: `calc(100% - 49px)`,
         top: `${top}px`,
         width: `${c.width}px`,
         height: `${topH}px`,
