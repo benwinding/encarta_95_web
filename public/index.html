@@ -99,40 +99,84 @@
       screen.classList.toggle("captured", document.pointerLockElement === document.body);
     });
 
-    /* ---------------- Touch: warp-to-tap ---------------- */
+    /* ---------------- Touch: direct tap-to-point ---------------- */
 
-    // Win95's default pointer speed maps 1 PS/2 mickey -> 2 screen pixels,
-    // so mickeys = pixels / MOUSE_SCALE. (Calibrated empirically: a delta of n
-    // moves 2n-1 px, linear across the whole range.)
+    // Win95's default pointer speed maps 1 PS/2 mickey -> 2 screen pixels
+    // (calibrated: a packet of n mickeys moves exactly 2n px), so
+    // mickeys = pixels / MOUSE_SCALE.
     const MOUSE_SCALE = 2;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
     // v86's PS/2 controller consumes only ONE mouse packet per browser
     // event-loop turn; a burst pushes one packet and drops the rest. So we
-    // send one packet at a time, spaced by a real timer tick so the guest's
-    // mouse driver has time to read it. (25 ms proved reliable under load.)
-    const turn = () => new Promise((resolve) => setTimeout(resolve, 25));
+    // send one packet, then yield until the guest has read it (the PS/2 mouse
+    // buffer drains to zero) before sending the next.
+    const sleep0 = () => new Promise((resolve) => setTimeout(resolve, 0));
+    async function turn() {
+      const ps2 =
+        emulator.v86 && emulator.v86.cpu && emulator.v86.cpu.devices && emulator.v86.cpu.devices.ps2;
+      if (!ps2 || !ps2.mouse_buffer) { await sleep0(); return; }
+      for (let i = 0; i < 200 && ps2.mouse_buffer.length > 0; i++) await sleep0();
+    }
 
-    // Warp the guest cursor to an absolute guest pixel. Relative-only:
-    //   1. Saturate into the top-left corner (Win95 clamps at the border),
-    //      giving a known origin.
-    //   2. Walk to the target in paced <=127-mickey packets.
-    async function warpTo(gx, gy) {
+    // Host-side model of the guest cursor position. The CPU runs on a worker
+    // behind a *paired* bus, so bus listeners never see our own sends — wrap
+    // `bus.send` instead to intercept every relative packet (ours and v86's own
+    // touch-drag handling). Win95 clamps at the screen border, so we clamp
+    // identically — edge moves self-correct.
+    let cursorX = GUEST_W / 2;
+    let cursorY = GUEST_H / 2;
+    const busSend = emulator.bus.send.bind(emulator.bus);
+    emulator.bus.send = (name, data) => {
+      if (name === "mouse-delta" && data) {
+        cursorX = clamp(cursorX + MOUSE_SCALE * data[0], 0, GUEST_W - 1);
+        cursorY = clamp(cursorY - MOUSE_SCALE * data[1], 0, GUEST_H - 1); // bus y is up-positive
+      }
+      return busSend(name, data);
+    };
+
+    // Send a relative move, split into <=127-mickey packets, one packet per
+    // turn, so the guest actually consumes all of it.
+    async function moveBy(dxPx, dyPx) {
       const b = emulator.bus;
       if (!b) return;
-      for (let i = 0; i < 6; i++) {
-        b.send("mouse-delta", [-127, 127]); // left + up (v86 delta is up-positive)
+      let mx = Math.round(dxPx / MOUSE_SCALE); // + = right
+      let my = Math.round(dyPx / MOUSE_SCALE); // + = down
+      while (mx !== 0 || my !== 0) {
+        const sx = clamp(mx, -127, 127);
+        const sy = clamp(my, -127, 127);
+        mx -= sx;
+        my -= sy;
+        b.send("mouse-delta", [sx, -sy]); // bus y is up-positive
         await turn();
       }
-      let mx = Math.round(gx / MOUSE_SCALE);
-      let my = Math.round(gy / MOUSE_SCALE);
-      while (mx > 0 || my > 0) {
-        const dx = Math.min(127, mx);
-        const dy = Math.min(127, my);
-        mx -= dx;
-        my -= dy;
-        b.send("mouse-delta", [dx, -dy]); // right + down
-        await turn();
+    }
+
+    // Learn the cursor's position: slam into the top-left corner (Win95 clamps
+    // at the border, giving a known origin), then park it at screen centre.
+    // Runs once at load, and again at the start of a drag to re-sync the model.
+    let calibrating = false;
+    async function calibrate() {
+      if (calibrating) return;
+      calibrating = true;
+      try {
+        const b = emulator.bus;
+        if (!b) return;
+        for (let i = 0; i < 6; i++) {
+          b.send("mouse-delta", [-127, 127]); // slam into the top-left corner
+          await turn();
+        }
+        cursorX = 0;
+        cursorY = 0;
+        await moveBy(GUEST_W / 2, GUEST_H / 2);
+      } finally {
+        calibrating = false;
       }
+    }
+
+    // Move straight to a guest pixel from the modelled position (no corner trip).
+    async function warpTo(gx, gy) {
+      await moveBy(gx - cursorX, gy - cursorY);
     }
 
     let clicking = false;
@@ -152,6 +196,15 @@
       }
     }
 
+    // Calibrate once the guest has enabled its mouse, so the cursor simply
+    // starts centred (no visible corner flash during use).
+    (function waitForMouse(tries) {
+      const ps2 =
+        emulator.v86 && emulator.v86.cpu && emulator.v86.cpu.devices && emulator.v86.cpu.devices.ps2;
+      if (ps2 && ps2.use_mouse) { calibrate(); return; }
+      if ((tries || 0) < 150) setTimeout(() => waitForMouse((tries || 0) + 1), 200);
+    })();
+
     function clientToGuest(clientX, clientY) {
       const r = screen.getBoundingClientRect();
       return {
@@ -166,7 +219,7 @@
       (e) => {
         if (e.touches.length !== 1) { touchStart = null; return; }
         const t = e.touches[0];
-        touchStart = { x: t.clientX, y: t.clientY, t: performance.now(), moved: 0 };
+        touchStart = { x: t.clientX, y: t.clientY, t: performance.now(), moved: 0, recentred: false };
         // Suppress scroll/zoom and the browser's synthetic mouse events
         // (which would otherwise trigger Pointer Lock).
         e.preventDefault();
@@ -177,14 +230,19 @@
     screen.addEventListener(
       "touchmove",
       (e) => {
-        if (touchStart && e.changedTouches.length) {
-          const t = e.changedTouches[0];
-          touchStart.moved = Math.max(
-            touchStart.moved,
-            Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y)
-          );
+        if (!touchStart || !e.changedTouches.length) return;
+        const t = e.changedTouches[0];
+        touchStart.moved = Math.max(
+          touchStart.moved,
+          Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y)
+        );
+        // Once the gesture is clearly a drag (not a tap), re-sync the cursor
+        // model once by parking the cursor at screen centre.
+        if (!touchStart.recentred && touchStart.moved > 24) {
+          touchStart.recentred = true;
+          calibrate();
         }
-        // Dragging moves the cursor: v86's own touchmove handler sends deltas.
+        // The drag movement itself is applied by v86's own touchmove handler.
       },
       { passive: true }
     );

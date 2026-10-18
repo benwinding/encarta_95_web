@@ -35,11 +35,14 @@ Enter/Backspace/Tab/arrows). The Windows 95 taskbar is visually masked, and desk
 keys (Alt+F4/Alt+Tab/Ctrl+Esc) are suppressed.
 
 Touch uses the relative PS/2 mouse: there is no absolute-mouse driver for Windows 95
-(VBADOS/VBMOUSE target Windows 3.x, and its `VBMOUSE.DRV` crashes the Win95 boot). A tap
-saturates the cursor into the top-left corner (Win95 clamps at the border), then walks to
-the target in paced ≤127-mickey packets. v86's PS/2 controller consumes only one mouse
-packet per browser event-loop turn (bursts are dropped), so packets are spaced ~25 ms
-apart; the delta→pixel mapping is a linear 2 px/mickey (Win95's default pointer speed).
+(VBADOS/VBMOUSE target Windows 3.x, and its `VBMOUSE.DRV` crashes the Win95 boot). The page
+keeps a host-side model of the cursor position (a packet of `n` mickeys moves exactly
+`2n` px — Win95's default pointer speed, clamped at the borders), so a tap moves the cursor
+straight to the tapped point and clicks, with no visible corner detour. v86's PS/2
+controller consumes only one mouse packet per browser event-loop turn (bursts are dropped),
+so packets are sent one at a time, waiting for the guest to read each. Once at load (the
+cursor ends up centred) and once at the start of each drag, the model re-syncs by slamming
+the cursor into the top-left corner to re-learn its origin.
 
 ## Commands
 
