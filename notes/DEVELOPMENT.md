@@ -61,8 +61,8 @@ satisfy this constraint. It is the thread that ties the whole project together.
 - Kiosk polish (taskbar mask, pointer capture).
 - Touch support (host-side cursor tracking; tap-to-point).
 - Repo hygiene: history rewrite (~2.6 GB → ~216 MB) to drop an obsolete, large legacy tree.
-- Article deep links: `#/article/<title>`, with an in-guest caption helper and a caption→title
-  map generated from `ENCARTA.M12`.
+- Article deep links: `#/article/<title>`, with a resident 16-bit helper using
+  `ENCARAPI.FGETCURTOPICTITLE` and a caption→title map generated from `ENCARTA.M12`.
 
 ## What worked
 
@@ -73,9 +73,9 @@ satisfy this constraint. It is the thread that ties the whole project together.
 - **Kiosk polish** — taskbar mask and pointer capture.
 - **Touch** — a host-side model of the guest cursor makes a tap move the pointer straight to the
   tapped point (~15–20 ms) instead of a visible corner detour.
-- **Article deep links** — a resident caption helper plus a map extracted from `ENCARTA.M12`
-  resolves reused media captions (e.g. `Letter "A"` → `A`, `Albert Einstein` → the Einstein
-  article) and keeps URL-driven titles pinned.
+- **Article deep links** — a resident 16-bit helper calls `ENCARAPI.FGETCURTOPICTITLE` and streams
+  the exact current title, so articles without media captions (`Anorexia Nervosa`, `Piracy`) work
+  too; the `ENCARTA.M12` map keeps older caption URLs working.
 
 ## Dead ends and lessons learned
 
@@ -110,5 +110,4 @@ touch work).
 
 - Finish the disk export → split → validate pipeline.
 - Chunk caching for repeat visits (IndexedDB / service worker).
-- Replace the media-caption heuristic with a 16-bit `FGETCURTOPICTITLE`/TitleFrame query;
-  1,696 reused captions are currently ambiguous when browsing manually.
+- Simplify the legacy caption map now that the resident helper provides the canonical title.

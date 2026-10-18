@@ -67,8 +67,9 @@ flowchart TB
 The host exposes hash routes (`#/article/<title>`) without changing the guest:
 
 - `ENCTITLE.EXE` (baked into the Windows disk and autostarted from `win.ini`; source in
-  `spike/enctitle.c`) watches Encarta's current media caption and streams `T<title>` lines over
-  COM1.
+  `spike/enctitle16.c`) calls Encarta's `ENCARAPI.FGETCURTOPICTITLE` through a 16-bit helper and
+  streams `T<title>` lines over COM1. This also covers articles with no media caption (for
+  example `Anorexia Nervosa` and `Piracy`).
 - `public/title-map.js` is generated from `ENCYC95/ENCARTA.M12`. It maps media captions to
   canonical Pinpointer/article titles and includes a canonical-title set used to avoid
   remapping searchable titles.
