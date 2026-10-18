@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Encarta 95</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" href="favicon-32.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overscroll-behavior: none; }
+    body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    #viewport { position: relative; width: 100vw; height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 8px; box-sizing: border-box; }
+    #screen_container { width: min(100%, calc((100dvh - 16px) * 4 / 3)); height: min(100%, calc((100vw - 16px) * 3 / 4)); aspect-ratio: 4 / 3; outline: none; background: #000; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+    #screen_container canvas, #screen_container > div { width: 100% !important; height: 100% !important; display: block; }
+    #screen_container.captured { cursor: none; }
+
+    /* Visually hide the Windows 95 taskbar strip. Cosmetic only (pointer-events: none). */
+    #taskbar-mask { position: absolute; z-index: 10; display: none; background: #000; pointer-events: none; }
+
+    /* Floating on-screen-keyboard trigger, shown only on touch devices. */
+    #kbd-btn { position: fixed; right: 12px; bottom: 12px; z-index: 20; display: none; width: 48px; height: 48px; padding: 0; border: 1px solid #444; border-radius: 8px; background: rgba(30,30,30,0.85); color: #eee; font-size: 22px; line-height: 46px; text-align: center; cursor: pointer; touch-action: manipulation; }
+    body.touch #kbd-btn { display: block; }
+    #kbd-input { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; z-index: -1; }
+  </style>
+</head>
+<body>
+  <div id="viewport">
+    <div id="screen_container" tabindex="0" title="Click to capture the mouse"></div>
+    <div id="taskbar-mask"></div>
+  </div>
+  <button id="kbd-btn" aria-label="Keyboard">&#9000;</button>
+  <input id="kbd-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+
+  <script src="title-map.js"></script>
+  <script src="runtime/libv86.js"></script>
+  <script>
+    const GUEST_W = 1024;
+    const GUEST_H = 768;
+
+    const viewport = document.getElementById("viewport");
+    const screen = document.getElementById("screen_container");
+    const taskbarMask = document.getElementById("taskbar-mask");
+    const kbdBtn = document.getElementById("kbd-btn");
+    const kbdInput = document.getElementById("kbd-input");
+
+    const isTouch =
+      (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+      "ontouchstart" in window;
+    if (isTouch) document.body.classList.add("touch");
+
+    const emulator = new V86({
+      wasm_path: "runtime/v86.wasm",
+      memory_size: 64 * 1024 * 1024,
+      vga_memory_size: 8 * 1024 * 1024,
+      screen_container: screen,
+      bios: { url: "bios/seabios.bin" },
+      vga_bios: { url: "bios/vgabios.bin" },
+      cdrom: { url: "disks/encarta95/.iso", size: 675440640, async: true, fixed_chunk_size: 256 * 1024, use_parts: true, synchronous: true },
+      hda: { url: "disks/c-drive/.img", size: 471859200, async: true, fixed_chunk_size: 256 * 1024, use_parts: true, synchronous: true },
+      initial_state: { url: "state/encarta95.bin" },
+      autostart: true,
+      disable_audio: true,
+    });
+    window.emulator = emulator;
+
+    // Cosmetic mask over the bottom ~28px (1024x768 guest) taskbar strip.
+    const TASKBAR_FRACTION = 28 / 768;
+    function layoutTaskbarMask() {
+      const c = screen.getBoundingClientRect();
+      const v = viewport.getBoundingClientRect();
+      const h = Math.round(c.height * TASKBAR_FRACTION);
+      Object.assign(taskbarMask.style, {
+        left: `${c.left - v.left}px`,
+        top: `${c.top - v.top + c.height - h}px`,
+        width: `${c.width}px`,
+        height: `${h}px`,
+      });
+    }
+    layoutTaskbarMask();
+    taskbarMask.style.display = "block";
+    window.addEventListener("resize", layoutTaskbarMask);
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(layoutTaskbarMask).observe(screen);
+    }
+
+    /* ---------------- Mouse (desktop): Pointer Lock ---------------- */
+
+    let lockPending = false;
+    async function captureMouse() {
+      screen.focus();
+      if (document.pointerLockElement || lockPending) return;
+      lockPending = true;
+      try { await emulator.lock_mouse(); } catch (_) {}
+      finally { lockPending = false; }
+    }
+    if (!isTouch) {
+      // Bind mousedown only: firing on both mousedown and click races two
+      // requestPointerLock() calls ("Pointer lock pending" error).
+      screen.addEventListener("mousedown", captureMouse);
+    }
+    document.addEventListener("pointerlockchange", () => {
+      screen.classList.toggle("captured", document.pointerLockElement === document.body);
+    });
+
+    /* ---------------- Touch: direct tap-to-point ---------------- */
+
+    // Win95's default pointer speed maps 1 PS/2 mickey -> 2 screen pixels
+    // (calibrated: a packet of n mickeys moves exactly 2n px), so
+    // mickeys = pixels / MOUSE_SCALE.
+    const MOUSE_SCALE = 2;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    // v86's PS/2 controller consumes only ONE mouse packet per browser
+    // event-loop turn; a burst pushes one packet and drops the rest. So we
+    // send one packet, then yield until the guest has read it (the PS/2 mouse
+    // buffer drains to zero) before sending the next.
+    const sleep0 = () => new Promise((resolve) => setTimeout(resolve, 0));
+    async function turn() {
+      const ps2 =
+        emulator.v86 && emulator.v86.cpu && emulator.v86.cpu.devices && emulator.v86.cpu.devices.ps2;
+      if (!ps2 || !ps2.mouse_buffer) { await sleep0(); return; }
+      for (let i = 0; i < 200 && ps2.mouse_buffer.length > 0; i++) await sleep0();
+    }
+
+    // Host-side model of the guest cursor position. The CPU runs on a worker
+    // behind a *paired* bus, so bus listeners never see our own sends — wrap
+    // `bus.send` instead to intercept every relative packet (ours and v86's own
+    // touch-drag handling). Win95 clamps at the screen border, so we clamp
+    // identically — edge moves self-correct.
+    let cursorX = GUEST_W / 2;
+    let cursorY = GUEST_H / 2;
+    const busSend = emulator.bus.send.bind(emulator.bus);
+    emulator.bus.send = (name, data) => {
+      if (name === "mouse-delta" && data) {
+        cursorX = clamp(cursorX + MOUSE_SCALE * data[0], 0, GUEST_W - 1);
+        cursorY = clamp(cursorY - MOUSE_SCALE * data[1], 0, GUEST_H - 1); // bus y is up-positive
+      }
+      return busSend(name, data);
+    };
+
+    // Send a relative move, split into <=127-mickey packets, one packet per
+    // turn, so the guest actually consumes all of it.
+    async function moveBy(dxPx, dyPx) {
+      const b = emulator.bus;
+      if (!b) return;
+      let mx = Math.round(dxPx / MOUSE_SCALE); // + = right
+      let my = Math.round(dyPx / MOUSE_SCALE); // + = down
+      while (mx !== 0 || my !== 0) {
+        const sx = clamp(mx, -127, 127);
+        const sy = clamp(my, -127, 127);
+        mx -= sx;
+        my -= sy;
+        b.send("mouse-delta", [sx, -sy]); // bus y is up-positive
+        await turn();
+      }
+    }
+
+    // Learn the cursor's position: slam into the top-left corner (Win95 clamps
+    // at the border, giving a known origin), then park it at screen centre.
+    // Runs once at load, and again at the start of a drag to re-sync the model.
+    let calibrating = false;
+    async function calibrate() {
+      if (calibrating) return;
+      calibrating = true;
+      try {
+        const b = emulator.bus;
+        if (!b) return;
+        for (let i = 0; i < 6; i++) {
+          b.send("mouse-delta", [-127, 127]); // slam into the top-left corner
+          await turn();
+        }
+        cursorX = 0;
+        cursorY = 0;
+        await moveBy(GUEST_W / 2, GUEST_H / 2);
+      } finally {
+        calibrating = false;
+      }
+    }
+
+    // Move straight to a guest pixel from the modelled position (no corner trip).
+    async function warpTo(gx, gy) {
+      await moveBy(gx - cursorX, gy - cursorY);
+    }
+
+    let clicking = false;
+    async function clickAt(gx, gy) {
+      if (clicking) return;
+      clicking = true;
+      try {
+        await warpTo(gx, gy);
+        const b = emulator.bus;
+        if (!b) return;
+        b.send("mouse-click", [true, false, false]);
+        await turn();
+        b.send("mouse-click", [false, false, false]);
+        await turn();
+      } finally {
+        clicking = false;
+      }
+    }
+
+    // Calibrate once the guest has enabled its mouse, so the cursor simply
+    // starts centred (no visible corner flash during use).
+    (function waitForMouse(tries) {
+      const ps2 =
+        emulator.v86 && emulator.v86.cpu && emulator.v86.cpu.devices && emulator.v86.cpu.devices.ps2;
+      if (ps2 && ps2.use_mouse) { calibrate(); return; }
+      if ((tries || 0) < 150) setTimeout(() => waitForMouse((tries || 0) + 1), 200);
+    })();
+
+    function clientToGuest(clientX, clientY) {
+      const r = screen.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(GUEST_W - 1, Math.round(((clientX - r.left) / r.width) * GUEST_W))),
+        y: Math.max(0, Math.min(GUEST_H - 1, Math.round(((clientY - r.top) / r.height) * GUEST_H))),
+      };
+    }
+
+    let touchStart = null;
+    screen.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length !== 1) { touchStart = null; return; }
+        const t = e.touches[0];
+        touchStart = { x: t.clientX, y: t.clientY, t: performance.now(), moved: 0, recentred: false };
+        // Suppress scroll/zoom and the browser's synthetic mouse events
+        // (which would otherwise trigger Pointer Lock).
+        e.preventDefault();
+      },
+      { passive: false }
+    );
+
+    screen.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!touchStart || !e.changedTouches.length) return;
+        const t = e.changedTouches[0];
+        touchStart.moved = Math.max(
+          touchStart.moved,
+          Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y)
+        );
+        // Once the gesture is clearly a drag (not a tap), re-sync the cursor
+        // model once by parking the cursor at screen centre.
+        if (!touchStart.recentred && touchStart.moved > 24) {
+          touchStart.recentred = true;
+          calibrate();
+        }
+        // The drag movement itself is applied by v86's own touchmove handler.
+      },
+      { passive: true }
+    );
+
+    screen.addEventListener(
+      "touchend",
+      (e) => {
+        const start = touchStart;
+        touchStart = null;
+        if (!start || !e.changedTouches.length) return;
+        const t = e.changedTouches[0];
+        const dt = performance.now() - start.t;
+        const dist = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+        e.preventDefault();
+        if (dt < 350 && dist < 12 && start.moved < 12) {
+          const g = clientToGuest(t.clientX, t.clientY);
+          clickAt(g.x, g.y);
+        }
+      },
+      { passive: false }
+    );
+
+    screen.addEventListener("touchcancel", () => { touchStart = null; }, { passive: true });
+
+    /* ---------------- On-screen keyboard bridge ---------------- */
+
+    kbdBtn.addEventListener("click", () => {
+      // Focus inside the gesture so iOS raises the soft keyboard.
+      kbdInput.focus();
+    });
+
+    kbdInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { emulator.keyboard_send_keys([13]); e.preventDefault(); }
+      else if (e.key === "Backspace") { emulator.keyboard_send_keys([8]); e.preventDefault(); }
+      else if (e.key === "Tab") { emulator.keyboard_send_keys([9]); e.preventDefault(); }
+      else if (e.key === "ArrowLeft") { emulator.keyboard_send_keys([37]); e.preventDefault(); }
+      else if (e.key === "ArrowUp") { emulator.keyboard_send_keys([38]); e.preventDefault(); }
+      else if (e.key === "ArrowRight") { emulator.keyboard_send_keys([39]); e.preventDefault(); }
+      else if (e.key === "ArrowDown") { emulator.keyboard_send_keys([40]); e.preventDefault(); }
+    });
+
+    kbdInput.addEventListener("input", () => {
+      const v = kbdInput.value;
+      kbdInput.value = "";
+      if (v) emulator.keyboard_send_text(v);
+    });
+
+    /* ---------------- Kiosk: block desktop escape keys ---------------- */
+
+    const BLOCKED_KEYS = new Set(["F4", "Tab", "Escape"]);
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.target === kbdInput) return;
+        if ((e.altKey || e.ctrlKey || e.metaKey) && BLOCKED_KEYS.has(e.key)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true
+    );
+
+    /* ---------------- URL routes: #/article/<title> ----------------
+     *
+     * The guest is an opaque VM.  A tiny helper inside Windows 95
+     * (ENCTITLE.EXE, autostarted from win.ini) watches Encarta's current
+     * article caption and streams it to COM1 as lines "T<title>".
+     * "Article -> URL" parses that stream; "URL -> article" drives
+     * Encarta's Pinpointer search.
+     */
+
+    const ROUTE_RE = /^#\/article\/(.+)$/;
+    const articleHash = (title) => "#/article/" + encodeURIComponent(title);
+
+    // Caption -> canonical Pinpointer title, extracted from ENCARTA.M12.
+    // `CANONICAL_TITLES` lets URL hashes that are already canonical pass
+    // through untouched even when they collide with a media caption key.
+    const TITLE_MAP = window.ENCARTA_TITLE_MAP || Object.create(null);
+    const CANONICAL_TITLES = new Set(window.ENCARTA_CANONICAL_TITLES || []);
+    const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+    const resolveCaption = (title) =>
+      hasOwn(TITLE_MAP, title) ? TITLE_MAP[title] : title;
+    const resolveHash = (title) =>
+      CANONICAL_TITLES.has(title) ? title : resolveCaption(title);
+
+    let navigating = false;
+    let lastTitle = null;
+    let pinnedTitle = null;
+    let pinnedCaption = null;
+
+    function setHash(title) {
+      if (!title || title === lastTitle) return;
+      lastTitle = title;
+      const h = articleHash(title);
+      if (location.hash !== h) history.replaceState(null, "", h);
+    }
+
+    // -- Article -> URL (title streamed from the guest over COM1) --
+    let serialLine = "";
+    emulator.add_listener("serial0-output-byte", (byte) => {
+      const ch = String.fromCharCode(byte);
+      if (ch === "\n") {
+        const line = serialLine.replace(/\r$/, "");
+        serialLine = "";
+        if (line.charCodeAt(0) === 84 /* 'T' */) {
+          if (navigating) return;
+          const caption = line.slice(1).trim();
+          if (pinnedTitle) {
+            if (pinnedCaption === null) pinnedCaption = caption;
+            if (caption === pinnedCaption) {
+              setHash(pinnedTitle);
+              return;
+            }
+            pinnedTitle = null;
+            pinnedCaption = null;
+          }
+          setHash(CANONICAL_TITLES.has(caption) ? caption : resolveCaption(caption));
+        }
+      } else if (serialLine.length < 1024) {
+        serialLine += ch;
+      } else {
+        serialLine = "";
+      }
+    });
+
+    // -- URL -> article (drives Encarta's Pinpointer search) --
+    async function goToArticle(title) {
+      if (navigating) return;
+      navigating = true;
+      try {
+        await new Promise((r) => setTimeout(r, 1500)); // let the guest settle
+        await calibrate();
+        await clickAt(423, 25); // the Find / Pinpointer button
+        await new Promise((r) => setTimeout(r, 1600));
+        await emulator.keyboard_send_text(title);
+        await new Promise((r) => setTimeout(r, 400));
+        await emulator.keyboard_send_keys([13]); // run the search; opens top hit
+        await new Promise((r) => setTimeout(r, 3000));
+      } finally {
+        navigating = false;
+      }
+    }
+
+    function navigateHash() {
+      const m = location.hash.match(ROUTE_RE);
+      if (!m) return;
+      const title = resolveHash(decodeURIComponent(m[1]));
+      const h = articleHash(title);
+      if (location.hash !== h) history.replaceState(null, "", h);
+      lastTitle = title;
+      pinnedTitle = title;
+      pinnedCaption = null;
+      goToArticle(title);
+    }
+
+    window.addEventListener("hashchange", navigateHash);
+
+    (function bootFromHash() {
+      const m = location.hash.match(ROUTE_RE);
+      if (!m) return;
+      const title = resolveHash(decodeURIComponent(m[1]));
+      const h = articleHash(title);
+      if (location.hash !== h) history.replaceState(null, "", h);
+      lastTitle = title;
+      pinnedTitle = title;
+      pinnedCaption = null;
+      (function waitForMouse(tries) {
+        const ps2 = emulator.v86 && emulator.v86.cpu && emulator.v86.cpu.devices && emulator.v86.cpu.devices.ps2;
+        if (ps2 && ps2.use_mouse) { goToArticle(title); return; }
+        if ((tries || 0) < 150) setTimeout(() => waitForMouse((tries || 0) + 1), 200);
+      })();
+    })();
+  </script>
+</body>
+</html>

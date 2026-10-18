@@ -1,0 +1,15 @@
+# dependencies
+node_modules
+
+# user-supplied media (see README)
+input/
+
+# generated at build time
+public/runtime/
+public/disks/encarta95/
+
+# browser automation artifacts
+.playwright-mcp/
+
+# OS
+.DS_Store
