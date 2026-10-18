@@ -32,6 +32,7 @@
   <button id="kbd-btn" aria-label="Keyboard">&#9000;</button>
   <input id="kbd-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
 
+  <script src="title-map.js"></script>
   <script src="runtime/libv86.js"></script>
   <script>
     const GUEST_W = 1024;
@@ -307,6 +308,117 @@
       },
       true
     );
+
+    /* ---------------- URL routes: #/article/<title> ----------------
+     *
+     * The guest is an opaque VM.  A tiny helper inside Windows 95
+     * (ENCTITLE.EXE, autostarted from win.ini) watches Encarta's current
+     * article caption and streams it to COM1 as lines "T<title>".
+     * "Article -> URL" parses that stream; "URL -> article" drives
+     * Encarta's Pinpointer search.
+     */
+
+    const ROUTE_RE = /^#\/article\/(.+)$/;
+    const articleHash = (title) => "#/article/" + encodeURIComponent(title);
+
+    // Caption -> canonical Pinpointer title, extracted from ENCARTA.M12.
+    // `CANONICAL_TITLES` lets URL hashes that are already canonical pass
+    // through untouched even when they collide with a media caption key.
+    const TITLE_MAP = window.ENCARTA_TITLE_MAP || Object.create(null);
+    const CANONICAL_TITLES = new Set(window.ENCARTA_CANONICAL_TITLES || []);
+    const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+    const resolveCaption = (title) =>
+      hasOwn(TITLE_MAP, title) ? TITLE_MAP[title] : title;
+    const resolveHash = (title) =>
+      CANONICAL_TITLES.has(title) ? title : resolveCaption(title);
+
+    let navigating = false;
+    let lastTitle = null;
+    let pinnedTitle = null;
+    let pinnedCaption = null;
+
+    function setHash(title) {
+      if (!title || title === lastTitle) return;
+      lastTitle = title;
+      const h = articleHash(title);
+      if (location.hash !== h) history.replaceState(null, "", h);
+    }
+
+    // -- Article -> URL (title streamed from the guest over COM1) --
+    let serialLine = "";
+    emulator.add_listener("serial0-output-byte", (byte) => {
+      const ch = String.fromCharCode(byte);
+      if (ch === "\n") {
+        const line = serialLine.replace(/\r$/, "");
+        serialLine = "";
+        if (line.charCodeAt(0) === 84 /* 'T' */) {
+          if (navigating) return;
+          const caption = line.slice(1).trim();
+          if (pinnedTitle) {
+            if (pinnedCaption === null) pinnedCaption = caption;
+            if (caption === pinnedCaption) {
+              setHash(pinnedTitle);
+              return;
+            }
+            pinnedTitle = null;
+            pinnedCaption = null;
+          }
+          setHash(CANONICAL_TITLES.has(caption) ? caption : resolveCaption(caption));
+        }
+      } else if (serialLine.length < 1024) {
+        serialLine += ch;
+      } else {
+        serialLine = "";
+      }
+    });
+
+    // -- URL -> article (drives Encarta's Pinpointer search) --
+    async function goToArticle(title) {
+      if (navigating) return;
+      navigating = true;
+      try {
+        await new Promise((r) => setTimeout(r, 1500)); // let the guest settle
+        await calibrate();
+        await clickAt(423, 25); // the Find / Pinpointer button
+        await new Promise((r) => setTimeout(r, 1600));
+        await emulator.keyboard_send_text(title);
+        await new Promise((r) => setTimeout(r, 400));
+        await emulator.keyboard_send_keys([13]); // run the search; opens top hit
+        await new Promise((r) => setTimeout(r, 3000));
+      } finally {
+        navigating = false;
+      }
+    }
+
+    function navigateHash() {
+      const m = location.hash.match(ROUTE_RE);
+      if (!m) return;
+      const title = resolveHash(decodeURIComponent(m[1]));
+      const h = articleHash(title);
+      if (location.hash !== h) history.replaceState(null, "", h);
+      lastTitle = title;
+      pinnedTitle = title;
+      pinnedCaption = null;
+      goToArticle(title);
+    }
+
+    window.addEventListener("hashchange", navigateHash);
+
+    (function bootFromHash() {
+      const m = location.hash.match(ROUTE_RE);
+      if (!m) return;
+      const title = resolveHash(decodeURIComponent(m[1]));
+      const h = articleHash(title);
+      if (location.hash !== h) history.replaceState(null, "", h);
+      lastTitle = title;
+      pinnedTitle = title;
+      pinnedCaption = null;
+      (function waitForMouse(tries) {
+        const ps2 = emulator.v86 && emulator.v86.cpu && emulator.v86.cpu.devices && emulator.v86.cpu.devices.ps2;
+        if (ps2 && ps2.use_mouse) { goToArticle(title); return; }
+        if ((tries || 0) < 150) setTimeout(() => waitForMouse((tries || 0) + 1), 200);
+      })();
+    })();
   </script>
 </body>
 </html>
