@@ -1,4 +1,4 @@
-# Encarta 95 (in the browser)
+# Encarta 95 on the web!
 
 Run **Microsoft Encarta 95** entirely in the browser via
 [v86](https://github.com/copy/v86), served as a static site. A pre-booted Windows 95
