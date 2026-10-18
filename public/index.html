@@ -10,32 +10,24 @@
     #viewport { position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; padding: 8px; box-sizing: border-box; }
     #screen_container { width: min(100%, calc((100vh - 16px) * 4 / 3)); height: min(100%, calc((100vw - 16px) * 3 / 4)); aspect-ratio: 4 / 3; outline: none; background: #000; }
     #screen_container canvas, #screen_container > div { width: 100% !important; height: 100% !important; display: block; }
+    #screen_container.captured { cursor: none; }
 
-    /*
-     * Kiosk shields. These are siblings of #screen_container (NOT children): v86's
-     * mouse adapter only forwards events whose target is inside the screen element,
-     * so anything here swallows clicks before they reach the guest. They're placed
-     * over the Windows 95 title-bar (min/max/close) and the taskbar (Start button),
-     * which are the only ways to reach the desktop.
-     */
-    .shield { position: absolute; z-index: 10; display: none; cursor: default; }
-    #shield-titlebar { background: #000; }
-    #shield-taskbar { background: #000; }
+    /* Visually hide the Windows 95 taskbar strip. This is cosmetic only
+     * (pointer-events: none) — mouse input is handled by v86 under pointer lock. */
+    #taskbar-mask { position: absolute; z-index: 10; display: none; background: #000; pointer-events: none; }
   </style>
 </head>
 <body>
   <div id="viewport">
-    <div id="screen_container" tabindex="0" title="Click to start"></div>
-    <div id="shield-titlebar" class="shield"></div>
-    <div id="shield-taskbar" class="shield"></div>
+    <div id="screen_container" tabindex="0" title="Click to capture the mouse"></div>
+    <div id="taskbar-mask"></div>
   </div>
 
   <script src="runtime/libv86.js"></script>
   <script>
     const viewport = document.getElementById("viewport");
     const screen = document.getElementById("screen_container");
-    const shieldTitlebar = document.getElementById("shield-titlebar");
-    const shieldTaskbar = document.getElementById("shield-taskbar");
+    const taskbarMask = document.getElementById("taskbar-mask");
 
     const emulator = new V86({
       wasm_path: "runtime/v86.wasm",
@@ -52,46 +44,45 @@
     });
     window.emulator = emulator;
 
-    // Guest is 1024x768. Cover the Win95 title bar (top ~28px) and taskbar (~28px).
-    const TOP_FRACTION = 28 / 768;
-    const BOTTOM_FRACTION = 28 / 768;
-
-    function layoutShields() {
+    // Cosmetic mask over the bottom ~28px (1024x768 guest) taskbar strip.
+    const TASKBAR_FRACTION = 28 / 768;
+    function layoutTaskbarMask() {
       const c = screen.getBoundingClientRect();
       const v = viewport.getBoundingClientRect();
-      const left = c.left - v.left;
-      const top = c.top - v.top;
-
-      const topH = Math.round(c.height * TOP_FRACTION);
-      const bottomH = Math.round(c.height * BOTTOM_FRACTION);
-
-      Object.assign(shieldTitlebar.style, {
-        left: `calc(100% - 49px)`,
-        top: `${top}px`,
+      const h = Math.round(c.height * TASKBAR_FRACTION);
+      Object.assign(taskbarMask.style, {
+        left: `${c.left - v.left}px`,
+        top: `${c.top - v.top + c.height - h}px`,
         width: `${c.width}px`,
-        height: `${topH}px`,
-      });
-      Object.assign(shieldTaskbar.style, {
-        left: `${left}px`,
-        top: `${top + c.height - bottomH}px`,
-        width: `${c.width}px`,
-        height: `${bottomH}px`,
+        height: `${h}px`,
       });
     }
-
-    function showShields() {
-      layoutShields();
-      shieldTitlebar.style.display = "block";
-      shieldTaskbar.style.display = "block";
-    }
-
-    showShields();
-    window.addEventListener("resize", layoutShields);
+    layoutTaskbarMask();
+    taskbarMask.style.display = "block";
+    window.addEventListener("resize", layoutTaskbarMask);
     if (typeof ResizeObserver !== "undefined") {
-      new ResizeObserver(layoutShields).observe(screen);
+      new ResizeObserver(layoutTaskbarMask).observe(screen);
     }
 
-    // Block escape hatches that would reveal the desktop.
+    // Capture the mouse: v86 forwards relative movement only while the host
+    // pointer is locked, so this is what makes the guest cursor track 1:1.
+    let lockPending = false;
+    async function captureMouse() {
+      screen.focus();
+      if (document.pointerLockElement || lockPending) return;
+      lockPending = true;
+      try { await emulator.lock_mouse(); } catch (_) {}
+      finally { lockPending = false; }
+    }
+    // Bind mousedown only: firing on both mousedown and click races two
+    // requestPointerLock() calls ("Pointer lock pending" error).
+    screen.addEventListener("mousedown", captureMouse);
+    document.addEventListener("pointerlockchange", () => {
+      screen.classList.toggle("captured", document.pointerLockElement === document.body);
+    });
+
+    // Block escape hatches that would reveal the desktop. Plain Escape stays
+    // unblocked so the user can leave pointer lock.
     const BLOCKED_KEYS = new Set(["F4", "Tab", "Escape"]);
     window.addEventListener(
       "keydown",
@@ -103,8 +94,6 @@
       },
       true
     );
-
-    screen.addEventListener("mousedown", () => screen.focus());
   </script>
 </body>
 </html>
