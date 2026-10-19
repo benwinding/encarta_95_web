@@ -49,6 +49,16 @@
       "ontouchstart" in window;
     if (isTouch) document.body.classList.add("touch");
 
+    // Prefer v86's ScriptProcessor mixer (lb) over the AudioWorklet one (kb).
+    // The AudioWorklet resampler turns 16-bit ADPCM-derived audio (e.g.
+    // Encarta's bird sounds) into harsh noise in some browsers, while the
+    // fallback path low-passes the DAC output and sounds much cleaner.
+    try {
+      Object.defineProperty(window, "AudioWorklet", { value: undefined, configurable: true });
+    } catch (_) {
+      window.AudioWorklet = undefined;
+    }
+
     const emulator = new V86({
       wasm_path: "runtime/v86.wasm",
       memory_size: 64 * 1024 * 1024,

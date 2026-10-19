@@ -79,6 +79,12 @@ satisfy this constraint. It is the thread that ties the whole project together.
 - **Multimedia** — Chrome starts the page with its `AudioContext` suspended and v86 creates its
   context after the emulator has already started, so nothing resumed it; in-guest video/audio was
   silent. The page now resumes it on the first pointer/key/touch gesture.
+- **ADPCM audio** — v86's AudioWorklet mixer made Encarta's 4-bit MS ADPCM clips (e.g. the Jay
+  bird call) sound like harsh noise, while PCM AVI audio (Basketball) was fine. The page now
+  selects v86's ScriptProcessor mixer (`lb`), whose low-pass output sounds clean.
+- **DHCP popup** — the snapshot's registry has
+  `HKLM\System\CurrentControlSet\Services\VxD\DHCP\PopupFlag` set to `0`, so Windows 95's DHCP
+  client no longer shows the "unable to obtain an IP network address" message.
 
 ## Dead ends and lessons learned
 
