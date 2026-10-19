@@ -5,6 +5,8 @@ Run **Microsoft Encarta 95** entirely in the browser via
 snapshot loads straight into a live, interactive Encarta; the Windows hard disk and the
 Encarta CD are streamed on demand.
 
+Play here -> https://benwinding.github.io/encarta_95_web
+
 <img width="2428" height="1644" alt="image" src="https://github.com/user-attachments/assets/8b0d4e51-9191-4c10-b1fc-cc55b484b483" />
 
 ## Requirements
