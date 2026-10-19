@@ -81,9 +81,11 @@ satisfy this constraint. It is the thread that ties the whole project together.
   silent. The page now resumes it on the first pointer/key/touch gesture.
 - **ADPCM audio debugging** — Encarta's 4-bit MS ADPCM clip (Jay bird call) plays as broadband
   noise while PCM AVI audio (Basketball) is fine. The corruption is *before* the WebAudio mixer:
-  the SB16 receives 16-bit 44.1 kHz PCM whose DMA source buffer is already noise, and the CD part
-  bytes match the ISO. The guest's MMP/ACM audio decode is therefore producing the noise, not
-  v86's mixer, SB16 ADPCM or CD reads. Forcing v86's ScriptProcessor mixer was tried and reverted.
+  the SB16 receives 16-bit PCM whose DMA source buffer is already noise, the DAC buffers are empty
+  at boot, and the CD part bytes match the ISO. The guest's MMP audio path is therefore producing
+  the noise, not v86's mixer, SB16 ADPCM or CD reads. Forcing v86's ScriptProcessor mixer was
+  tried and reverted; replacing the companion `T049841A` WAV with PCM in the CD also had no effect
+  in the restored snapshot (the MMP appears to use the `T049840A` FSM asset and/or a cached copy).
 - **DHCP popup** — the snapshot's registry has
   `HKLM\System\CurrentControlSet\Services\VxD\DHCP\PopupFlag` set to `0`, so Windows 95's DHCP
   client no longer shows the "unable to obtain an IP network address" message.
