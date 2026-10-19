@@ -76,6 +76,9 @@ satisfy this constraint. It is the thread that ties the whole project together.
 - **Article deep links** — a resident 16-bit helper calls `ENCARAPI.FGETCURTOPICTITLE` and streams
   the exact current title, so articles without media captions (`Anorexia Nervosa`, `Piracy`) work
   too; the `ENCARTA.M12` map keeps older caption URLs working.
+- **Multimedia** — Chrome starts the page with its `AudioContext` suspended and v86 creates its
+  context after the emulator has already started, so nothing resumed it; in-guest video/audio was
+  silent. The page now resumes it on the first pointer/key/touch gesture.
 
 ## Dead ends and lessons learned
 
