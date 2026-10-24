@@ -22,6 +22,9 @@
     #kbd-btn { position: fixed; right: 12px; bottom: 12px; z-index: 20; display: none; width: 48px; height: 48px; padding: 0; border: 1px solid #444; border-radius: 8px; background: rgba(30,30,30,0.85); color: #eee; font-size: 22px; line-height: 46px; text-align: center; cursor: pointer; touch-action: manipulation; }
     body.touch #kbd-btn { display: block; }
     #kbd-input { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; z-index: -1; }
+
+    /* Live network-transfer readout (megabits). */
+    #net-meter { position: fixed; left: 12px; bottom: 12px; z-index: 30; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.65); color: #9f9; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; pointer-events: none; user-select: none; }
   </style>
 </head>
 <body>
@@ -31,6 +34,7 @@
   </div>
   <button id="kbd-btn" aria-label="Keyboard">&#9000;</button>
   <input id="kbd-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+  <div id="net-meter" aria-hidden="true">0.0 Mb loaded</div>
 
   <script src="title-map.js"></script>
   <script src="runtime/libv86.js"></script>
@@ -320,6 +324,28 @@
       },
       true
     );
+
+    /* ---------------- Network transfer meter ---------------- */
+
+    // Resource Timing reports every XHR/fetch (including v86's paged disk
+    // chunks). Sum the transferred bytes and show decimal megabits.
+    const netMeter = document.getElementById("net-meter");
+    function loadedBytes() {
+      let bytes = 0;
+      const nav = performance.getEntriesByType("navigation")[0];
+      if (nav) bytes += nav.transferSize || nav.encodedBodySize || 0;
+      for (const entry of performance.getEntriesByType("resource")) {
+        bytes += entry.transferSize || entry.encodedBodySize || 0;
+      }
+      return bytes;
+    }
+    function updateNetMeter() {
+      const bytes = loadedBytes();
+      netMeter.textContent = (bytes / 1e6).toFixed(1) + " MB transferred";
+      netMeter.title = bytes.toLocaleString() + " bytes (" + (bytes * 8 / 1e6).toFixed(1) + " Mb)";
+    }
+    updateNetMeter();
+    setInterval(updateNetMeter, 500);
 
     /* ---------------- URL routes: #/article/<title> ----------------
      *
