@@ -30,7 +30,7 @@ flowchart TB
     F1["public/index.html"]
     F2["public/runtime/ — libv86.js + v86.wasm"]
     F3["public/bios/ — seabios.bin + vgabios.bin"]
-    F4["public/state/encarta95.bin — ~64 MB RAM snapshot"]
+    F4["public/state/encarta95.bin.zst — zstd RAM snapshot (~9 MB)"]
     F5["public/disks/c-drive/ — 1800 × 256 KB .img"]
     F6["public/disks/encarta95/ — N × 256 KB .iso (generated)"]
   end
@@ -103,7 +103,7 @@ flowchart LR
     HTML["public/index.html"]
     LIB["public/runtime/libv86.js"]
     WASM["public/runtime/v86.wasm"]
-    SNAP["public/state/encarta95.bin"]
+    SNAP["public/state/encarta95.bin.zst"]
     HD["public/disks/c-drive/*.img"]
     BIOS["public/bios/*.bin"]
     G["Guest: devices + RAM"]

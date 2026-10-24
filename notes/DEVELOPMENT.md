@@ -96,6 +96,13 @@ satisfy this constraint. It is the thread that ties the whole project together.
 - **DHCP popup** — the snapshot's registry has
   `HKLM\System\CurrentControlSet\Services\VxD\DHCP\PopupFlag` set to `0`, so Windows 95's DHCP
   client no longer shows the "unable to obtain an IP network address" message.
+- **Compressed snapshot** — v86's `restore_state` already detects zstd frames
+  (`28 B5 2F FD`) and decompresses them with its bundled wasm, so the 50 MB state is now served as
+  a ~9.3 MB `state/encarta95.bin.zst` (81.6% smaller). No loader code: the only change is the
+  `initial_state` URL. Save a raw state, then run `node scripts/compress-state.mjs` (uses the
+  `zstd` CLI at level 19, falling back to Node's native zstd) and commit the `.zst`. Brotli/xz
+  compress a little smaller but require an extra decoder; `zstd --long=27` (7.7 MB) uses a much
+  larger window and was not used.
 
 ## Dead ends and lessons learned
 
