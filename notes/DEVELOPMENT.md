@@ -79,13 +79,16 @@ satisfy this constraint. It is the thread that ties the whole project together.
 - **Multimedia** — Chrome starts the page with its `AudioContext` suspended and v86 creates its
   context after the emulator has already started, so nothing resumed it; in-guest video/audio was
   silent. The page now resumes it on the first pointer/key/touch gesture.
-- **ADPCM audio debugging** — Encarta's 4-bit MS ADPCM clip (Jay bird call) plays as broadband
-  noise while PCM AVI audio (Basketball) is fine. The corruption is *before* the WebAudio mixer:
-  the SB16 receives 16-bit PCM whose DMA source buffer is already noise, the DAC buffers are empty
-  at boot, and the CD part bytes match the ISO. The guest's MMP audio path is therefore producing
-  the noise, not v86's mixer, SB16 ADPCM or CD reads. Forcing v86's ScriptProcessor mixer was
-  tried and reverted; replacing the companion `T049841A` WAV with PCM in the CD also had no effect
-  in the restored snapshot (the MMP appears to use the `T049840A` FSM asset and/or a cached copy).
+- **16-bit audio / Jay ADPCM (fixed)** — Encarta's Jay bird call played as broadband noise while
+  8-bit PCM AVI audio (Basketball) was fine. It was not an ADPCM or MMP bug: any 16-bit PCM played
+  through waveOut was noise. The guest driver correctly filled its 16-bit DMA buffer at
+  `0x450000`, but v86 read `0x440000`. In `address_get_8bit`, v86 masked `channel_addr << 1` to
+  16 bits, dropping the carry into the page register (register `0x8000` plus page `0x44` must
+  yield `0x450000`), so the SB16 replayed stale RAM. The fix, ported from upstream v86, keeps the
+  shifted address unmasked and masks the page's low bit for 16-bit channels (see
+  `vendor/libv86.sync.js`). Verified with a 16-bit waveOut probe (exact expected samples) and the
+  restored snapshot: the Jay clip now matches the reference bird call (envelope correlation 0.89)
+  instead of noise. 8-bit audio was unaffected.
 - **DHCP popup** — the snapshot's registry has
   `HKLM\System\CurrentControlSet\Services\VxD\DHCP\PopupFlag` set to `0`, so Windows 95's DHCP
   client no longer shows the "unable to obtain an IP network address" message.
