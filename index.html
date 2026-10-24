@@ -58,7 +58,7 @@
       vga_bios: { url: "bios/vgabios.bin" },
       cdrom: { url: "disks/encarta95/.iso", size: 675440640, async: true, fixed_chunk_size: 256 * 1024, use_parts: true, synchronous: true },
       hda: { url: "disks/c-drive/.img", size: 471859200, async: true, fixed_chunk_size: 256 * 1024, use_parts: true, synchronous: true },
-      initial_state: { url: "state/encarta95.bin" },
+      initial_state: { url: "state/encarta95.bin.zst" },
       autostart: true,
     });
     window.emulator = emulator;
