@@ -19,7 +19,7 @@
     #taskbar-mask { position: absolute; z-index: 10; display: none; background: #000; pointer-events: none; }
 
     /* Floating on-screen-keyboard trigger, shown only on touch devices. */
-    #kbd-btn { position: fixed; right: 12px; bottom: 12px; z-index: 20; display: none; width: 48px; height: 48px; padding: 0; border: 1px solid #444; border-radius: 8px; background: rgba(30,30,30,0.85); color: #eee; font-size: 22px; line-height: 46px; text-align: center; cursor: pointer; touch-action: manipulation; }
+    #kbd-btn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 20; display: none; width: 48px; height: 48px; padding: 0; border: 1px solid #444; border-radius: 8px; background: rgba(30,30,30,0.85); color: #eee; font-size: 22px; line-height: 46px; text-align: center; cursor: pointer; touch-action: manipulation; }
     body.touch #kbd-btn { display: block; }
     #kbd-input { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; z-index: -1; }
 
@@ -29,7 +29,11 @@
     /* Source link, bottom-right. On touch devices it sits left of the keyboard button. */
     #source-link { position: fixed; right: 12px; bottom: 12px; z-index: 30; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.65); color: #9f9; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-decoration: none; }
     #source-link:hover { background: rgba(0,0,0,0.85); color: #cfc; }
-    body.touch #source-link { right: 72px; }
+
+    /* Keep the left pill clear of the centred keyboard button on small phones. */
+    @media (max-width: 420px) {
+      .net-label { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -39,7 +43,7 @@
   </div>
   <button id="kbd-btn" aria-label="Keyboard">&#9000;</button>
   <input id="kbd-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-  <div id="net-meter" aria-hidden="true">0.0 Mb loaded</div>
+  <div id="net-meter" aria-hidden="true"><span id="net-size">0.0 MB</span><span class="net-label"> transferred</span></div>
   <a id="source-link" href="https://github.com/benwinding/encarta_95_web" target="_blank" rel="noopener noreferrer">Source &#8599;</a>
 
   <script src="title-map.js"></script>
@@ -336,6 +340,7 @@
     // Resource Timing reports every XHR/fetch (including v86's paged disk
     // chunks). Sum the transferred bytes and show decimal megabits.
     const netMeter = document.getElementById("net-meter");
+    const netSize = document.getElementById("net-size");
     function loadedBytes() {
       let bytes = 0;
       const nav = performance.getEntriesByType("navigation")[0];
@@ -347,7 +352,7 @@
     }
     function updateNetMeter() {
       const bytes = loadedBytes();
-      netMeter.textContent = (bytes / 1e6).toFixed(1) + " MB transferred";
+      netSize.textContent = (bytes / 1e6).toFixed(1) + " MB";
       netMeter.title = bytes.toLocaleString() + " bytes (" + (bytes * 8 / 1e6).toFixed(1) + " Mb)";
     }
     updateNetMeter();
