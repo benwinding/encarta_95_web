@@ -346,6 +346,7 @@
 
     let navigating = false;
     let lastTitle = null;
+    let currentTitle = null;
     let pinnedTitle = null;
     let pinnedCaption = null;
 
@@ -366,6 +367,7 @@
         if (line.charCodeAt(0) === 84 /* 'T' */) {
           if (navigating) return;
           const caption = line.slice(1).trim();
+          currentTitle = CANONICAL_TITLES.has(caption) ? caption : resolveCaption(caption);
           if (pinnedTitle) {
             if (pinnedCaption === null) pinnedCaption = caption;
             if (caption === pinnedCaption) {
@@ -402,24 +404,17 @@
       }
     }
 
-    function navigateHash() {
-      const m = location.hash.match(ROUTE_RE);
-      if (!m) return;
-      const title = resolveHash(decodeURIComponent(m[1]));
-      const h = articleHash(title);
-      if (location.hash !== h) history.replaceState(null, "", h);
-      lastTitle = title;
-      pinnedTitle = title;
-      pinnedCaption = null;
-      goToArticle(title);
-    }
+    // A hashchange can only come from the user (address-bar edit, Back/Forward):
+    // internal updates use history.replaceState, which does not fire it. Reload
+    // so the emulator restarts from its snapshot and bootFromHash drives the
+    // guest to the requested article.
+    window.addEventListener("hashchange", () => location.reload());
 
-    window.addEventListener("hashchange", navigateHash);
+    const DEFAULT_TITLE = "Art";
 
     (function bootFromHash() {
       const m = location.hash.match(ROUTE_RE);
-      if (!m) return;
-      const title = resolveHash(decodeURIComponent(m[1]));
+      const title = resolveHash(m ? decodeURIComponent(m[1]) : DEFAULT_TITLE);
       const h = articleHash(title);
       if (location.hash !== h) history.replaceState(null, "", h);
       lastTitle = title;
@@ -427,7 +422,21 @@
       pinnedCaption = null;
       (function waitForMouse(tries) {
         const ps2 = emulator.v86 && emulator.v86.cpu && emulator.v86.cpu.devices && emulator.v86.cpu.devices.ps2;
-        if (ps2 && ps2.use_mouse) { goToArticle(title); return; }
+        if (ps2 && ps2.use_mouse) {
+          // The snapshot may already be showing the requested article (it is
+          // saved on Art).  Give the serial helper a moment to report the
+          // current title, and skip the Find/search retype if it already
+          // matches.
+          const started = performance.now();
+          (function waitForTitle() {
+            if (currentTitle !== null || performance.now() - started > 3000) {
+              if (currentTitle !== title) goToArticle(title);
+              return;
+            }
+            setTimeout(waitForTitle, 100);
+          })();
+          return;
+        }
         if ((tries || 0) < 150) setTimeout(() => waitForMouse((tries || 0) + 1), 200);
       })();
     })();
