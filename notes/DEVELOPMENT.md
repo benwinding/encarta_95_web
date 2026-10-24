@@ -103,10 +103,10 @@ satisfy this constraint. It is the thread that ties the whole project together.
   `zstd` CLI at level 19, falling back to Node's native zstd) and commit the `.zst`. Brotli/xz
   compress a little smaller but require an extra decoder; `zstd --long=27` (7.7 MB) uses a much
   larger window and was not used.
-- **Portrait mode (720x1560) on phones** — Windows 95 gets a real portrait framebuffer instead of a
+- **Portrait mode (480x900) on phones** — Windows 95 gets a real portrait framebuffer instead of a
   rotated or letterboxed landscape one. This needs three coordinated patches, all committed to the
   repo:
-  1. `bios/vgabios.bin`: VBE mode `0x011A` (the 16-bpp 1280x1024 entry) is rewritten to 720x1560
+  1. `bios/vgabios.bin`: VBE mode `0x011A` (the 16-bpp 1280x1024 entry) is rewritten to 480x900
      (x/y at `0x4FEA`/`0x4FEC`), and the option-ROM checksum byte is fixed up.
   2. `disks/c-drive` → `C:\WINDOWS\SYSTEM\VBEMP.DRV`: three edits so the driver accepts the
      custom geometry — the resolution lookup constant (`cmp esi,0x05000400` at `0x30A4`), the
@@ -116,12 +116,15 @@ satisfy this constraint. It is the thread that ties the whole project together.
   3. `SYSTEM.INI [display]`: `x_resolution=720`, `y_resolution=1560`, `bpp=16`,
      `IgnoreRegistry=1`.
   There are two snapshots: `state/encarta95.bin.zst` (1024x768 landscape) and
-  `state/encarta95-720x1560.bin.zst` (portrait). `index.html` picks one at load time
+  `state/encarta95-480x900.bin.zst` (portrait). `index.html` picks one at load time
   (`isTouch && portrait`, or a viewport <= 600 px wide), sets `GUEST_W/H`, the stage aspect ratio
   and the Find-button coordinates accordingly. `scripts/compress-state.mjs <name>` compresses
   either snapshot. The portrait snapshot is saved with Encarta maximised (Alt+Space then X was
-  sent while saving), so the Find click uses `(429, 33)` instead of the landscape `(423, 25)`.
+  sent while saving), so the Find click uses `(431, 33)` instead of the landscape `(423, 25)`.
   The fit is tuned to the page's `calibrate()+warpTo()` path, not the raw button centre.
+  At 480 px wide Encarta's toolbar no longer fits: "Go Back" is truncated and
+  Features/Tools are off-screen, and the article text column is narrow. This is a
+  deliberate trade-off for ~2.6x fewer pixels than 720x1560.
 
 ## Dead ends and lessons learned
 

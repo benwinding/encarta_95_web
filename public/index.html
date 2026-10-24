@@ -60,19 +60,19 @@
       "ontouchstart" in window;
     if (isTouch) document.body.classList.add("touch");
 
-    // Phones and narrow/touch portrait windows use a dedicated 720x1560
+    // Phones and narrow/touch portrait windows use a dedicated 480x900
     // snapshot; everything else keeps the original 1024x768 landscape one.
     const PORTRAIT =
       (isTouch && window.innerHeight >= window.innerWidth) ||
       window.innerWidth <= 600;
 
-    const GUEST_W = PORTRAIT ? 720 : 1024;
-    const GUEST_H = PORTRAIT ? 1560 : 768;
+    const GUEST_W = PORTRAIT ? 480 : 1024;
+    const GUEST_H = PORTRAIT ? 900 : 768;
     const STATE_URL = PORTRAIT
-      ? "state/encarta95-720x1560.bin.zst"
+      ? "state/encarta95-480x900.bin.zst"
       : "state/encarta95.bin.zst";
     const TASKBAR_FRACTION = 28 / GUEST_H;
-    const FIND_X = PORTRAIT ? 429 : 423;
+    const FIND_X = PORTRAIT ? 431 : 423;
     const FIND_Y = PORTRAIT ? 33 : 25;
 
     screen.style.aspectRatio = GUEST_W + " / " + GUEST_H;
