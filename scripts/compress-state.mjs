@@ -5,7 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const src = path.join(rootDir, "public", "state", "encarta95.bin");
+const name = process.argv.slice(2).find((a) => !a.startsWith("--")) || "encarta95";
+const src = path.join(rootDir, "public", "state", `${name}.bin`);
 const dst = src + ".zst";
 const keep = process.argv.includes("--keep");
 

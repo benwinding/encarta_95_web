@@ -103,6 +103,25 @@ satisfy this constraint. It is the thread that ties the whole project together.
   `zstd` CLI at level 19, falling back to Node's native zstd) and commit the `.zst`. Brotli/xz
   compress a little smaller but require an extra decoder; `zstd --long=27` (7.7 MB) uses a much
   larger window and was not used.
+- **Portrait mode (720x1560) on phones** — Windows 95 gets a real portrait framebuffer instead of a
+  rotated or letterboxed landscape one. This needs three coordinated patches, all committed to the
+  repo:
+  1. `bios/vgabios.bin`: VBE mode `0x011A` (the 16-bpp 1280x1024 entry) is rewritten to 720x1560
+     (x/y at `0x4FEA`/`0x4FEC`), and the option-ROM checksum byte is fixed up.
+  2. `disks/c-drive` → `C:\WINDOWS\SYSTEM\VBEMP.DRV`: three edits so the driver accepts the
+     custom geometry — the resolution lookup constant (`cmp esi,0x05000400` at `0x30A4`), the
+     enumeration table pair (`0x35FE`), and the per-mode struct at `0x1C2A`
+     (`+0x08`/`+0x0A` size, `+0x34`/`+0x36` and `+0x3C`/`+0x3E` signed extents). Without the
+     struct edit the VBE mode is 1560 tall but GDI still paints only 1024 rows.
+  3. `SYSTEM.INI [display]`: `x_resolution=720`, `y_resolution=1560`, `bpp=16`,
+     `IgnoreRegistry=1`.
+  There are two snapshots: `state/encarta95.bin.zst` (1024x768 landscape) and
+  `state/encarta95-720x1560.bin.zst` (portrait). `index.html` picks one at load time
+  (`isTouch && portrait`, or a viewport <= 600 px wide), sets `GUEST_W/H`, the stage aspect ratio
+  and the Find-button coordinates accordingly. `scripts/compress-state.mjs <name>` compresses
+  either snapshot. The portrait snapshot is saved with Encarta maximised (Alt+Space then X was
+  sent while saving), so the Find click uses `(429, 33)` instead of the landscape `(423, 25)`.
+  The fit is tuned to the page's `calibrate()+warpTo()` path, not the raw button centre.
 
 ## Dead ends and lessons learned
 
