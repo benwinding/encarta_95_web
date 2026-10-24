@@ -25,6 +25,11 @@
 
     /* Live network-transfer readout (megabits). */
     #net-meter { position: fixed; left: 12px; bottom: 12px; z-index: 30; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.65); color: #9f9; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; pointer-events: none; user-select: none; }
+
+    /* Source link, bottom-right. On touch devices it sits left of the keyboard button. */
+    #source-link { position: fixed; right: 12px; bottom: 12px; z-index: 30; padding: 4px 8px; border-radius: 6px; background: rgba(0,0,0,0.65); color: #9f9; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-decoration: none; }
+    #source-link:hover { background: rgba(0,0,0,0.85); color: #cfc; }
+    body.touch #source-link { right: 72px; }
   </style>
 </head>
 <body>
@@ -35,6 +40,7 @@
   <button id="kbd-btn" aria-label="Keyboard">&#9000;</button>
   <input id="kbd-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
   <div id="net-meter" aria-hidden="true">0.0 Mb loaded</div>
+  <a id="source-link" href="https://github.com/benwinding/encarta_95_web" target="_blank" rel="noopener noreferrer">Source &#8599;</a>
 
   <script src="title-map.js"></script>
   <script src="runtime/libv86.js"></script>
