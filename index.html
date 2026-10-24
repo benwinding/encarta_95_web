@@ -20,7 +20,7 @@
 
     /* Floating on-screen-keyboard trigger, shown only on touch devices. */
     #kbd-btn { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 20; display: none; width: 48px; height: 48px; padding: 0; border: 1px solid #444; border-radius: 8px; background: rgba(30,30,30,0.85); color: #eee; font-size: 22px; line-height: 46px; text-align: center; cursor: pointer; touch-action: manipulation; }
-    body.touch #kbd-btn { display: block; }
+    body.touch.guest-ready #kbd-btn { display: block; }
     #kbd-input { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; z-index: -1; }
 
     /* Live network-transfer readout (megabits). */
@@ -76,6 +76,11 @@
       autostart: true,
     });
     window.emulator = emulator;
+
+    // Only offer the on-screen keyboard once the guest can accept input.
+    emulator.add_listener("emulator-loaded", () => {
+      document.body.classList.add("guest-ready");
+    });
 
     // Chrome keeps a page's AudioContext suspended until a user gesture.
     // v86 creates its context during restore, after the emulator "started"
